@@ -1,5 +1,4 @@
 #!/bin/bash
-#/etc/NetworkManager/dispatcher.d/ibbwifi-login
 
 # Get the network interface and state
 INTERFACE="$1"
@@ -8,12 +7,17 @@ STATE="$2"
 # Check if the interface is in the 'up' state
 if [[ "$STATE" == "up" ]]; then
     # Get the connected SSID
-    SSID=$(nmcli -t -f active,ssid dev wifi | awk -F: '/^yes/ {print $2}')
+    SSID=$(iwgetid -r)
+    CON_STATUS=$(nc -zw1 google.com 443 >/dev/null 2>&1; echo $?)
     
     # Check if the connected SSID is 'ibbWiFi'
     if [[ "$SSID" == "ibbWiFi" ]]; then
-        echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> /var/log/ibbwifi-autologin.log
-        /usr/local/bin/warp_captive_login.sh
+	    if [ "$CON_STATUS" -eq 0 ]; then
+		    echo "$(date): Connected to ibbWifi and Online" >> /var/log/ibbwifi-autologin.log
+	    else
+		    echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> /var/log/ibbwifi-autologin.log
+		    python3 /home/typefe/Desktop/w/PYTHON/Exercise/captive_auto_login/script.py
+	    fi
     else
         echo "$(date): Connected to $SSID on $INTERFACE. No action required." >> /var/log/ibbwifi-autologin.log
     fi
