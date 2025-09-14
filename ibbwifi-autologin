@@ -4,22 +4,40 @@
 INTERFACE="$1"
 STATE="$2"
 
-# Check if the interface is in the 'up' state
-if [[ "$STATE" == "up" ]]; then
+# Get the active connection's name/ID from the environment variable set by NetworkManager
+# This is more reliable than parsing command output.
+CONN_ID="$CONNECTION_ID"
+
+# Check if the interface is in the 'up' state and a connection ID is available
+if [[ "$STATE" == "up" && -n "$CONN_ID" ]]; then
     # Get the connected SSID
     SSID=$(iwgetid -r)
-    CON_STATUS=$(nc -zw1 google.com 443 >/dev/null 2>&1; echo $?)
     
     # Check if the connected SSID is 'ibbWiFi'
     if [[ "$SSID" == "ibbWiFi" ]]; then
-	    if [ "$CON_STATUS" -eq 0 ]; then
-		    echo "$(date): Connected to ibbWifi and Online" >> /var/log/ibbwifi-autologin.log
-	    else
-		    echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> /var/log/ibbwifi-autologin.log
-		    python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
-	    fi
+        # Check if we are already online. If so, do nothing.
+        if nc -zw1 google.com 443 >/dev/null 2>&1; then
+            echo "$(date): Connected to ibbWiFi and already online." >> /var/log/ibbwifi-autologin.log
+        else
+            echo "$(date): Connected to ibbWiFi on $INTERFACE. Attempting captive portal login..." >> /var/log/ibbwifi-autologin.log
+            
+            # Run the python login script and check if it succeeds (exit code 0)
+            if python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py; then
+                echo "$(date): Python login script succeeded. Changing DNS settings..." >> /var/log/ibbwifi-autologin.log
+                
+                # Set the DNS to 127.0.0.1 and ignore DHCP-provided DNS servers
+                nmcli connection modify "$CONN_ID" ipv4.dns "127.0.0.1"
+                nmcli connection modify "$CONN_ID" ipv4.ignore-auto-dns yes
+                
+                # Re-apply the connection settings to make the DNS change take effect immediately
+                nmcli connection up "$CONN_ID"
+                
+                echo "$(date): DNS for $CONN_ID set to 127.0.0.1." >> /var/log/ibbwifi-autologin.log
+            else
+                echo "$(date): Python login script failed. DNS not changed." >> /var/log/ibbwifi-autologin.log
+            fi
+        fi
     else
         echo "$(date): Connected to $SSID on $INTERFACE. No action required." >> /var/log/ibbwifi-autologin.log
     fi
 fi
-
