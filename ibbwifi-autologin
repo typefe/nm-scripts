@@ -16,7 +16,7 @@ if [[ "$STATE" == "up" ]]; then
 		    echo "$(date): Connected to ibbWifi and Online" >> /var/log/ibbwifi-autologin.log
 	    else
 		    echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> /var/log/ibbwifi-autologin.log
-		    python3 /home/typefe/Desktop/w/PYTHON/Exercise/captive_auto_login/script.py
+		    python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
 	    fi
     else
         echo "$(date): Connected to $SSID on $INTERFACE. No action required." >> /var/log/ibbwifi-autologin.log
