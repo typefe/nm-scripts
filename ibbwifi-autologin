@@ -4,6 +4,17 @@
 INTERFACE="$1"
 STATE="$2"
 
+# --- ZAPRET CONFIGURATIONS ---
+# Configuration for ibbWiFi
+ZAPRET_IBBWIFI_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=1 <HOSTLIST> --new --filter-tcp=80 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=method+2 <HOSTLIST>"'
+# Configuration for Turk Telekom
+ZAPRET_DEFAULT_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=multidisorder --dpi-desync-split-pos=sniext+1 --dpi-desync-split-seqovl=sniext <HOSTLIST> --new --filter-udp=50000-65535 --dpi-desync=fake --dpi-desync-repeats=3 <HOSTLIST>"'
+# --- ZAPRET CONFIG FILE PATH ---
+ZAPRET_CONFIG_FILE="/opt/zapret/config"
+
+# Log file path
+LOG_FILE="/var/log/ibbwifi-autologin.log"
+
 # Check if the interface is in the 'up' state
 if [[ "$STATE" == "up" ]]; then
     # Get the connected SSID
@@ -12,26 +23,35 @@ if [[ "$STATE" == "up" ]]; then
     
     # Check if the connected SSID is 'ibbWiFi'
     if [[ "$SSID" == "ibbWiFi" ]]; then
+        echo "$(date): Detected connection to ibbWiFi on $INTERFACE" >> "$LOG_FILE"
+        # Update zapret config for ibbWiFi
+        sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
+
 	    if [ "$CON_STATUS" -eq 0 ]; then
-		    echo "$(date): Connected to ibbWifi and Online" >> /var/log/ibbwifi-autologin.log
+		    echo "$(date): Connected to ibbWifi and Online" >> "$LOG_FILE"
 	    else
-            # Change DNS to Default
+            # Initially set DNS to automatic
+            echo "$(date): Resetting DNS to automatic for $SSID" >> "$LOG_FILE"
             nmcli connection modify "$SSID" ipv4.dns ""
             nmcli connection modify "$SSID" ipv4.ignore-auto-dns no
             nmcli device reapply "$INTERFACE"
+            sleep 3 # Wait for a few seconds to ensure the connection is established
 
-		    echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> /var/log/ibbwifi-autologin.log
-		    python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
-            sleep 3
+            echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> "$LOG_FILE"
+            python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
+            sleep 3 # Wait for a few seconds to ensure the connection is established
 
-            # Change DNS
+            # Set DNS to localhost(dns-crypt-proxy)
+            echo "$(date): Setting DNS to 127.0.0.1 for $SSID" >> "$LOG_FILE"
             nmcli connection modify "$SSID" ipv4.dns "127.0.0.1"
             nmcli connection modify "$SSID" ipv4.ignore-auto-dns yes
             nmcli device reapply "$INTERFACE"
-
-
 	    fi
     else
-        echo "$(date): Connected to $SSID on $INTERFACE. No action required." >> /var/log/ibbwifi-autologin.log
+        echo "$(date): Connected to $SSID on $INTERFACE.." >> "$LOG_FILE"
+        sed -i "s|^NFQWS_OPT=.*|${ZAPRET_DEFAULT_OPT}|" "$ZAPRET_CONFIG_FILE"
     fi
+    echo "$(date): Restarting zapret service to apply new configuration." >> "$LOG_FILE"
+    systemctl restart zapret
+    echo "$(date): zapret service restarted successfully." >> "$LOG_FILE"
 fi
