@@ -27,26 +27,12 @@ if [[ "$STATE" == "up" ]]; then
         # Update zapret config for ibbWiFi
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
 
-	    if [ "$CON_STATUS" -eq 0 ]; then
-		    echo "$(date): Connected to ibbWifi and Online" >> "$LOG_FILE"
-	    else
-            # Initially set DNS to automatic
-            echo "$(date): Resetting DNS to automatic for $SSID" >> "$LOG_FILE"
-            nmcli connection modify "$SSID" ipv4.dns ""
-            nmcli connection modify "$SSID" ipv4.ignore-auto-dns no
-            nmcli device reapply "$INTERFACE"
-            sleep 3 # Wait for a few seconds to ensure the connection is established
-
+	   if [ "$CON_STATUS" -eq 0 ]; then
+		   echo "$(date): Connected to ibbWifi and Online" >> "$LOG_FILE"
+	   else
             echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> "$LOG_FILE"
-            python3 /home/typefe/Desktop/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
-            sleep 3 # Wait for a few seconds to ensure the connection is established
-
-            # Set DNS to localhost(dns-crypt-proxy)
-            echo "$(date): Setting DNS to 127.0.0.1 for $SSID" >> "$LOG_FILE"
-            nmcli connection modify "$SSID" ipv4.dns "127.0.0.1"
-            nmcli connection modify "$SSID" ipv4.ignore-auto-dns yes
-            nmcli device reapply "$INTERFACE"
-	    fi
+            python3 /home/typefe/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
+	   fi
     else
         echo "$(date): Connected to $SSID on $INTERFACE.." >> "$LOG_FILE"
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_DEFAULT_OPT}|" "$ZAPRET_CONFIG_FILE"
@@ -55,3 +41,4 @@ if [[ "$STATE" == "up" ]]; then
     systemctl restart zapret
     echo "$(date): zapret service restarted successfully." >> "$LOG_FILE"
 fi
+
