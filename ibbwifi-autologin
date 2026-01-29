@@ -1,44 +1,41 @@
 #!/bin/bash
 
-# Get the network interface and state
+# Get the network interface and state from Network Dispatcher
 INTERFACE="$1"
 STATE="$2"
 
-# --- ZAPRET CONFIGURATIONS ---
-# Configuration for ibbWiFi
-ZAPRET_IBBWIFI_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=1 <HOSTLIST> --new --filter-tcp=80 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=method+2 <HOSTLIST>"'
-# Configuration for Turk Telekom
-ZAPRET_DEFAULT_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=multidisorder --dpi-desync-split-pos=sniext+1 --dpi-desync-split-seqovl=sniext <HOSTLIST> --new --filter-udp=50000-65535 --dpi-desync=fake --dpi-desync-repeats=3 <HOSTLIST>"'
-# --- ZAPRET CONFIG FILE PATH ---
 ZAPRET_CONFIG_FILE="/opt/zapret/config"
-
-# Log file path
 LOG_FILE="/var/log/ibbwifi-autologin.log"
 
-# Check if the interface is in the 'up' state
-if [[ "$STATE" == "up" ]]; then
-    # Get the connected SSID
-    SSID=$(iwgetid -r)
-    CON_STATUS=$(nc -zw1 google.com 443 >/dev/null 2>&1; echo $?)
+# Options
+ZAPRET_IBBWIFI_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=1 <HOSTLIST> --new --filter-tcp=80 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=method+2 <HOSTLIST>"'
+ZAPRET_DEFAULT_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=multidisorder --dpi-desync-split-pos=sniext+1 --dpi-desync-split-seqovl=sniext <HOSTLIST> --new --filter-udp=50000-65535 --dpi-desync=fake --dpi-desync-repeats=3 <HOSTLIST>"'
+
+# 1. Only act if the primary wireless interface is coming up
+if [[ "$INTERFACE" == "wlan0" && "$STATE" == "up" ]]; then
     
-    # Check if the connected SSID is 'ibbWiFi'
+    # Wait a brief moment for the SSID to be associated
+    sleep 2
+    SSID=$(iwgetid -r)
+    
     if [[ "$SSID" == "ibbWiFi" ]]; then
-        echo "$(date): Detected connection to ibbWiFi on $INTERFACE" >> "$LOG_FILE"
-        # Update zapret config for ibbWiFi
+        echo "$(date): [ibbWiFi] Detected on wlan0." >> "$LOG_FILE"
+        
+        # Apply ibbWiFi zapret settings
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
-
-	   if [ "$CON_STATUS" -eq 0 ]; then
-		   echo "$(date): Connected to ibbWifi and Online" >> "$LOG_FILE"
-	   else
-            echo "$(date): Connected to ibbWiFi on $INTERFACE. Running script..." >> "$LOG_FILE"
+        systemctl restart zapret
+        
+        # Check connectivity for captive portal
+        if ! nc -zw1 google.com 443 >/dev/null 2>&1; then
+            echo "$(date): [ibbWiFi] Offline. Triggering captive login..." >> "$LOG_FILE"
             python3 /home/typefe/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
-	   fi
+        else
+            echo "$(date): [ibbWiFi] Already online." >> "$LOG_FILE"
+        fi
     else
-        echo "$(date): Connected to $SSID on $INTERFACE.." >> "$LOG_FILE"
+        # 2. Handle all other networks (Turk Telekom, etc.)
+        echo "$(date): [$SSID] Detected. Applying default zapret config." >> "$LOG_FILE"
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_DEFAULT_OPT}|" "$ZAPRET_CONFIG_FILE"
+        systemctl restart zapret
     fi
-    echo "$(date): Restarting zapret service to apply new configuration." >> "$LOG_FILE"
-    systemctl restart zapret
-    echo "$(date): zapret service restarted successfully." >> "$LOG_FILE"
 fi
-
