@@ -8,6 +8,10 @@ ZAPRET_CONFIG_FILE="/opt/zapret/config"
 LOG_FILE="/var/log/ibbwifi-autologin.log"
 
 # Options
+# Added -n to skip DNS resolution and prevent the 2-minute timeout
+CHECK_TARGET_IP="8.8.8.8" 
+CHECK_TARGET_PORT="443"
+
 ZAPRET_IBBWIFI_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=1 <HOSTLIST> --new --filter-tcp=80 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=method+2 <HOSTLIST>"'
 ZAPRET_DEFAULT_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=multidisorder --dpi-desync-split-pos=sniext+1 --dpi-desync-split-seqovl=sniext <HOSTLIST> --new --filter-udp=50000-65535 --dpi-desync=fake --dpi-desync-repeats=3 <HOSTLIST>"'
 
@@ -21,19 +25,23 @@ if [[ "$INTERFACE" == "wlan0" && "$STATE" == "up" ]]; then
     if [[ "$SSID" == "ibbWiFi" ]]; then
         echo "$(date): [ibbWiFi] Detected on wlan0." >> "$LOG_FILE"
         
-        # Apply ibbWiFi zapret settings
-        sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
-        systemctl restart zapret
-        
-        # Check connectivity for captive portal
-        if ! nc -zw1 google.com 443 >/dev/null 2>&1; then
+        # --- OPTIMIZATION START ---
+        # Check connectivity immediately using IP (skips DNS timeout)
+        # -n: No DNS, -z: Scan mode, -w 5: 5 second timeout
+        if ! nc -nzw5 $CHECK_TARGET_IP $CHECK_TARGET_PORT >/dev/null 2>&1; then
             echo "$(date): [ibbWiFi] Offline. Triggering captive login..." >> "$LOG_FILE"
             python3 /home/typefe/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
         else
             echo "$(date): [ibbWiFi] Already online." >> "$LOG_FILE"
         fi
+        
+        # Apply zapret settings AFTER login to ensure login script had clean connection
+        sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
+        systemctl restart zapret
+        # --- OPTIMIZATION END ---
+
     else
-        # 2. Handle all other networks (Turk Telekom, etc.)
+        # 2. Handle all other networks
         echo "$(date): [$SSID] Detected. Applying default zapret config." >> "$LOG_FILE"
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_DEFAULT_OPT}|" "$ZAPRET_CONFIG_FILE"
         systemctl restart zapret
