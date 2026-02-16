@@ -4,11 +4,19 @@
 INTERFACE="$1"
 STATE="$2"
 
+# --- GLOBAL CONFIGURATION ---
+EXEC_USER="typefe"
+USER_HOME="/home/$EXEC_USER"
+
 ZAPRET_CONFIG_FILE="/opt/zapret/config"
 LOG_FILE="/var/log/ibbwifi-autologin.log"
 
+# --- VIRTUAL ENVIRONMENT CONFIGURATION ---
+# Dynamically build paths using the global user variable
+VENV_PYTHON="$USER_HOME/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/venv/bin/python"
+SCRIPT_PATH="$USER_HOME/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py"
+
 # Options
-# Added -n to skip DNS resolution and prevent the 2-minute timeout
 CHECK_TARGET_IP="8.8.8.8" 
 CHECK_TARGET_PORT="443"
 
@@ -26,16 +34,18 @@ if [[ "$INTERFACE" == "wlan0" && "$STATE" == "up" ]]; then
         echo "$(date): [ibbWiFi] Detected on wlan0." >> "$LOG_FILE"
         
         # --- OPTIMIZATION START ---
-        # Check connectivity immediately using IP (skips DNS timeout)
-        # -n: No DNS, -z: Scan mode, -w 5: 5 second timeout
+        # Check connectivity immediately using IP
         if ! nc -nzw5 $CHECK_TARGET_IP $CHECK_TARGET_PORT >/dev/null 2>&1; then
             echo "$(date): [ibbWiFi] Offline. Triggering captive login..." >> "$LOG_FILE"
-            python3 /home/typefe/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py
+            
+            # Safely drop root privileges to the specified user just for this command
+            su - "$EXEC_USER" -c "$VENV_PYTHON $SCRIPT_PATH" >> "$LOG_FILE" 2>&1
+            
         else
             echo "$(date): [ibbWiFi] Already online." >> "$LOG_FILE"
         fi
         
-        # Apply zapret settings AFTER login to ensure login script had clean connection
+        # Root resumes control here to restart system services
         sed -i "s|^NFQWS_OPT=.*|${ZAPRET_IBBWIFI_OPT}|" "$ZAPRET_CONFIG_FILE"
         systemctl restart zapret
         # --- OPTIMIZATION END ---
