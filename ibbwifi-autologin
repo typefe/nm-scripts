@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# ============================================================================
+# Description: NetworkManager dispatcher script to handle captive portal login
+#              for "ibbWiFi" and switch Zapret DPI configs based on the network.
+#
+# Requirements:
+#   - NetworkManager (triggers this script via /etc/NetworkManager/dispatcher.d/)
+#   - curl (for captive portal detection)
+#   - zapret (running as a systemd service)
+#   - Python 3 + venv (for the captive portal login script)
+# ============================================================================
+
 # Get the network interface and state from Network Dispatcher
 INTERFACE="$1"
 STATE="$2"
@@ -16,26 +27,18 @@ LOG_FILE="/var/log/ibbwifi-autologin.log"
 VENV_PYTHON="$USER_HOME/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/venv/bin/python"
 SCRIPT_PATH="$USER_HOME/Desktop/Cloud/w/PROGRAMMING/PYTHON/Exercise/captive_auto_login/script.py"
 
-# Options
-CHECK_TARGET_IP="8.8.8.8" 
-CHECK_TARGET_PORT="443"
-
 ZAPRET_IBBWIFI_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=1 <HOSTLIST> --new --filter-tcp=80 --dpi-desync=fakedsplit --dpi-desync-ttl=1 --dpi-desync-autottl=-2 --dpi-desync-split-pos=method+2 <HOSTLIST>"'
 ZAPRET_DEFAULT_OPT='NFQWS_OPT="--filter-tcp=443 --dpi-desync=multidisorder --dpi-desync-split-pos=sniext+1 --dpi-desync-split-seqovl=sniext <HOSTLIST> --new --filter-udp=50000-65535 --dpi-desync=fake --dpi-desync-repeats=3 <HOSTLIST>"'
 
 # 1. Only act if the primary wireless interface is coming up
 if [[ "$INTERFACE" == "wlan0" && "$STATE" == "up" ]]; then
-    
-    # Wait a brief moment for the SSID to be associated
-    sleep 2
-    SSID=$(iwgetid -r)
-    
+    SSID="$CONNECTION_ID"
+
     if [[ "$SSID" == "ibbWiFi" ]]; then
         echo "$(date): [ibbWiFi] Detected on wlan0." >> "$LOG_FILE"
-        
-        # --- OPTIMIZATION START ---
-        # Check connectivity immediately using IP
-        if ! nc -nzw5 $CHECK_TARGET_IP $CHECK_TARGET_PORT >/dev/null 2>&1; then
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://clients3.google.com/generate_204)
+
+        if [[ "$HTTP_STATUS" != "204" ]]; then
             echo "$(date): [ibbWiFi] Offline. Triggering captive login..." >> "$LOG_FILE"
             
             # Safely drop root privileges to the specified user just for this command
